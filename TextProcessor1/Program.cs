@@ -5,13 +5,16 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using System.Threading;
 
 namespace TextProcessor1
 {
     class Program
     {
+        static string path = System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Text.txt");
+
         static void Main(string[] args)
-        {
+        {        
             int length = args.Length;
             if (args.Length > 1)
             {
@@ -21,14 +24,20 @@ namespace TextProcessor1
                 if (command == "созданиесловаря")
                 {
                     CreateDictionary();
+                    Console.WriteLine("Создание завершено");
+                    Console.ReadLine();
                 }
                 else if (command == "обновлениесловаря")
                 {
-
+                    UpdateDictionary();
+                    Console.WriteLine("Обновление завершено");
+                    Console.ReadLine();
                 }
                 else if (command == "очиститьсловарь")
                 {
-
+                    ClearDictionary();
+                    Console.WriteLine("Очистка завершена");
+                    Console.ReadLine();
                 }
                 else
                 {
@@ -38,9 +47,7 @@ namespace TextProcessor1
             }
             else if(args.Length==0)
             {
-                WordProcessing();
-                //Console.WriteLine("Введена пустая команда");
-                //Console.ReadLine();
+                WordProcessing();   
             }
             else
             {
@@ -52,96 +59,155 @@ namespace TextProcessor1
         {
             using (FrequencyContext db = new FrequencyContext())
             {
-                string path = @"C:\Users\mindw\source\repos\TextProcessor1\TextProcessor1\Text.txt";
-                string text;
                 int count = 1;
-                string[] separators = { ",", ".", "!", "?", ";", ":", " " };
                 try
                 {
-                    Console.WriteLine("******считываем весь файл********");
-                    using (StreamReader sr = new StreamReader(path))
-                    {
-                        text = sr.ReadToEnd();
-                    }
-                    string[] words = text.Split(separators, StringSplitOptions.RemoveEmptyEntries);
-                    Array.Sort(words);
-                    //foreach (var word in words)
-                    //{
-                    //    Console.WriteLine(word);
-                    //}
-                    
+                    string[] words = ReadAndSort(path);  //читаем файл, разбиваем на слова и сортируем их
                     for (int i = 0; i < words.Length-1; i++)
                     {
-                        if (words[i]==words[i+1])
+                        if (words[i]==words[i+1]) //считаем количество повторяющихся слов
                         {
                             count++;
                         }
-                        else
+                        else //если повторения закончились - добавляем информацию и сбрасываем счетчик
                         {
-                            if (count>=3 && words[i].Length>=3) db.Frequencies.Add(new Frequency { Word = words[i], Amount = count });
+                            if (count>=3 && words[i].Length>=3)
+                                db.Frequencies.Add(new Frequency { Word = words[i], Amount = count });
+
                             count = 1;
                         }
                     }
                     db.SaveChanges();
                     Console.WriteLine(words.Length);
-
-                    //Console.WriteLine(text);
                 }
                 catch (Exception e)
                 {
                     Console.WriteLine(e.Message);
                 }
-                //db.Frequencies.Add(new Frequency { Word = "Овощи", Amount = 37 });
-                //db.SaveChanges();
-                //Frequency frequency1 = new Frequency { Word = "Арбуз", Amount = 7 };
-                //Frequency frequency2 = new Frequency { Word = "Автобус", Amount = 2 };
-                //db.Frequencies.Add(frequency1);
-                //db.Frequencies.Add(frequency2);
-                //db.SaveChanges();
-                //Console.WriteLine("Объекты успешно сохранены");
-
-                //var frequencies = db.Frequencies;
-                //Console.WriteLine("Список объектов:");
-                //foreach (Frequency f in frequencies)
-                //{
-                //    Console.WriteLine("{0} - {1}", f.Word, f.Amount);
-                //}
-                //Console.ReadLine();
             }
         }
         static void UpdateDictionary()
         {
+            using (FrequencyContext db = new FrequencyContext())
+            {
+               
+                string[] newWords = ReadAndSort(path);
+                int j = 0, count=1, laterId=0;
+                var oldFreq = db.Frequencies.OrderBy(f => f.Word);
+                int countOldFreq=oldFreq.Count();
+                bool found;
 
+                    for (int i = 0; i < newWords.Length-1; i++)
+                    {
+                        if (newWords[i] == newWords[i + 1])
+                        {
+                            count++; //считаем повторения
+                        }
+                        else
+                        {
+                            found = false;
+                            for (j = laterId; j < countOldFreq; j++)
+                            {
+                                if (oldFreq.AsEnumerable().ElementAt(j).Word == newWords[i]) //если слово из нового текста нашлось в бд
+                                {
+                                    oldFreq.AsEnumerable().ElementAt(j).Amount += count;
+                                    //оба набора данных отсортированы, поэтому при новой итерации сравнения
+                                    //можно не смотреть на пройденные элементы
+                                    //сохраняем номер последнего совпавшего элемента
+                                    //и следующие итерации начинаем с него, пока не обнаружим новое совпадение
+                                    laterId = j;
+                                    found = true;
+                                    break;
+                                }
+                            }
+                            if ((found == false) 
+                                && (count>=3) 
+                                && (newWords[i].Length>=3))
+                            {   //если не нашли совпадения с бд - добавляем новый элемент
+                                db.Frequencies.Add(new Frequency { Word = newWords[i], Amount = count });
+                            }
+                            count = 1;
+                        }
+                        db.SaveChanges();
+
+            }
+            }
         }
         static void ClearDictionary()
         {
             using (FrequencyContext db = new FrequencyContext())
             {
-                db.Database.SqlQuery<Frequency>("TRUNCATE TABLE [Frequencies]");
+                db.Database.ExecuteSqlCommand("DELETE FROM Frequencies");
             }
+
         }
         static void WordProcessing()
         {
             string inpWord,sqlQuery1;
-            ConsoleKeyInfo cki = new ConsoleKeyInfo();
             while (true)
             {
-                //cki = Console.ReadKey(true);
-                inpWord = Console.ReadLine();
+                inpWord = "";
                 
-                if (inpWord == "") break;
-                
+                //цикл обработки нажатых клавиш
+                while (true)
+                {
+                    var key = Console.ReadKey(true);
+
+                    if (key.Key == ConsoleKey.Enter) //переводим строку, выходим из цикла
+                    {
+                        Console.WriteLine();
+                        break;
+                    }
+
+                    if (key.Key == ConsoleKey.Escape) return; //завершаем метод
+
+                    if (key.Key == ConsoleKey.Backspace) //затираем последний символ по backspace
+                    {
+                        inpWord = inpWord.Substring(0, inpWord.Length - 1);
+                        Console.Write("\r" + inpWord + " \b");
+                    }
+                    else
+                    {
+                        Console.Write(key.KeyChar); //выводим каждую нажатую клавишу в строку
+                        inpWord += key.KeyChar; //накапливаем символы в отдельной переменной
+                    }
+                }
+
+                if (inpWord == "") return;
+
                 System.Data.SqlClient.SqlParameter param = new System.Data.SqlClient.SqlParameter("@word", inpWord+"%");
                 sqlQuery1 = "select top 5 * from Frequencies where Word like @word order by Amount desc, Word desc";
                 using (FrequencyContext db = new FrequencyContext())
                 {
                     var frequency1 = db.Database.SqlQuery<Frequency>(sqlQuery1,param);
-                    foreach (var item in frequency1)
+                    foreach (var item in frequency1) //выводим полученные слова на экран
                     {
                         Console.WriteLine(item.Word);
                     }
                 }
             }
+        }
+        static string[] ReadAndSort(string path)
+        {
+
+            string text="";
+            string[] separators = { ",", ".", "!", "?", ";", ":", " " };
+            Console.WriteLine("******считываем весь файл********");
+            try
+            {
+                using (StreamReader sr = new StreamReader(path))
+                {
+                    text = sr.ReadToEnd();
+
+                }
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine(e);
+            }
+            string[] words = text.Split(separators, StringSplitOptions.RemoveEmptyEntries); //разбиваем на слова
+            Array.Sort(words); //сортируем
+            return words;
         }
     }
 }
