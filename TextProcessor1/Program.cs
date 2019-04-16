@@ -11,78 +11,78 @@ namespace TextProcessor1
 {
     class Program
     {
-        static string path = System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Text.txt");
+        static string path = "";
 
         static void Main(string[] args)
         {        
-            int length = args.Length;
             if (args.Length > 1)
             {
                 string command;
                 command = args[0] + args[1];
                 command = command.ToLower();
+                path = args[2];
                 if (command == "созданиесловаря")
                 {
                     CreateDictionary();
-                    Console.WriteLine("Создание завершено");
-                    Console.ReadLine();
                 }
                 else if (command == "обновлениесловаря")
                 {
                     UpdateDictionary();
                     Console.WriteLine("Обновление завершено");
-                    Console.ReadLine();
                 }
                 else if (command == "очиститьсловарь")
                 {
                     ClearDictionary();
                     Console.WriteLine("Очистка завершена");
-                    Console.ReadLine();
                 }
                 else
                 {
-                    Console.WriteLine("Введена неверная команда, попробуйте еще раз");
-                    Console.ReadLine();
+                    Console.WriteLine("При запуске задан неверный параметр");
                 }
-            }
-            else if(args.Length==0)
-            {
-                WordProcessing();   
             }
             else
             {
-                Console.WriteLine("Введена неверная команда, попробуйте еще раз");
-                Console.ReadLine();
+                Console.WriteLine("При запуске задан неверный параметр");
             }
+            WordProcessing();
         }
         static void CreateDictionary()
         {
             using (FrequencyContext db = new FrequencyContext())
             {
-                int count = 1;
-                try
+                string sqlQuery1 = "select * from Frequencies";
+                var countFreq = db.Database.SqlQuery<Frequency>(sqlQuery1);
+                if (countFreq.Count() == 0)
                 {
-                    string[] words = ReadAndSort(path);  //читаем файл, разбиваем на слова и сортируем их
-                    for (int i = 0; i < words.Length-1; i++)
+                    int count = 1;
+                    try
                     {
-                        if (words[i]==words[i+1]) //считаем количество повторяющихся слов
+                        string[] words = ReadAndSort(path);  //читаем файл, разбиваем на слова и сортируем их
+                        for (int i = 0; i < words.Length - 1; i++)
                         {
-                            count++;
-                        }
-                        else //если повторения закончились - добавляем информацию и сбрасываем счетчик
-                        {
-                            if (count>=3 && words[i].Length>=3)
-                                db.Frequencies.Add(new Frequency { Word = words[i], Amount = count });
+                            if (words[i] == words[i + 1]) //считаем количество повторяющихся слов
+                            {
+                                count++;
+                            }
+                            else //если повторения закончились - добавляем информацию и сбрасываем счетчик
+                            {
+                                if (count >= 3 && words[i].Length >= 3)
+                                    db.Frequencies.Add(new Frequency { Word = words[i], Amount = count });
 
-                            count = 1;
+                                count = 1;
+                            }
                         }
+                        db.SaveChanges();
                     }
-                    db.SaveChanges();
-                    Console.WriteLine(words.Length);
+                    catch (Exception e)
+                    {
+                        Console.WriteLine(e.Message);
+                    }
+                    Console.WriteLine("Создание завершено");
                 }
-                catch (Exception e)
+                else
                 {
-                    Console.WriteLine(e.Message);
+                    Console.WriteLine("В словаре уже есть записи. Вы можете очистить словарь, либо обновить его.");
                 }
             }
         }
@@ -191,20 +191,20 @@ namespace TextProcessor1
         {
 
             string text="";
-            string[] separators = { ",", ".", "!", "?", ";", ":", " " };
-            Console.WriteLine("******считываем весь файл********");
+            string[] separators = { ",", ".", "!", "?", ";", ":", " ","(",")","\"" };
+            Console.WriteLine("Файл считывается");
             try
             {
                 using (StreamReader sr = new StreamReader(path))
                 {
                     text = sr.ReadToEnd();
-
                 }
             }
             catch (Exception e)
             {
                 Console.WriteLine(e);
             }
+            text = text.ToLower();
             string[] words = text.Split(separators, StringSplitOptions.RemoveEmptyEntries); //разбиваем на слова
             Array.Sort(words); //сортируем
             return words;
